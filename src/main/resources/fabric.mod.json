@@ -1,0 +1,34 @@
+{
+	"schemaVersion": 1,
+	"id": "reelcraft",
+	"version": "${version}",
+	"name": "Reelcraft",
+	"description": "Minecraft, but singleplayer is an endless Instagram Reels-style feed of fresh worlds. Scroll to the next one.",
+	"authors": [
+		"Nathan"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/reelcraft/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.reelcraft.Reelcraft"
+		],
+		"client": [
+			"com.reelcraft.client.ReelcraftClient"
+		]
+	},
+	"mixins": [
+		"reelcraft.mixins.json",
+		{
+			"config": "reelcraft.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

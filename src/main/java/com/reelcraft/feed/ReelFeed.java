@@ -1,6 +1,9 @@
 package com.reelcraft.feed;
 
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -67,6 +70,10 @@ public final class ReelFeed {
 	private int ticksSinceBegin;
 	private long nextId;
 	private volatile boolean stopping;
+	/** Retired levels waiting to finish unloading their chunks, with how many ticks they have waited. */
+	private final Map<ServerLevel, Integer> closing = new HashMap<>();
+	/** Close a retired level anyway after this long, in case a chunk refuses to unload. */
+	private static final int CLOSE_TIMEOUT_TICKS = 20 * 30;
 
 	public ReelFeed(MinecraftServer server) {
 		this.server = server;
@@ -121,6 +128,7 @@ public final class ReelFeed {
 		if (this.stopping || this.current < 0) {
 			return;
 		}
+		this.closeRetired();
 		this.ticksSinceBegin++;
 		if (this.createCooldown > 0) {
 			this.createCooldown--;
@@ -168,7 +176,12 @@ public final class ReelFeed {
 		this.retireOld();
 	}
 
-	/** Close the levels of reels that are too far behind to scroll back to. */
+	/**
+	 * Retire the levels of reels that are too far behind to scroll back to. Closing a level that still has hundreds of
+	 * chunks loaded blocks the server thread for about half a second, and the player's respawn packet is sent at the end
+	 * of that same tick, so scrolls would hang. Instead the chunks are released here and unload over the next ticks, and
+	 * {@link #closeRetired} closes the level once it is empty.
+	 */
 	private void retireOld() {
 		for (int i = 0; i < this.current - HISTORY; i++) {
 			Reel old = this.reels.get(i);
@@ -176,7 +189,22 @@ public final class ReelFeed {
 			if (level != null && level != this.server.overworld()) {
 				this.releaseChunks(old);
 				old.level = null;
+				this.closing.put(level, 0);
+			}
+		}
+	}
+
+	/** Close at most one fully unloaded retired level per tick. */
+	private void closeRetired() {
+		Iterator<Map.Entry<ServerLevel, Integer>> it = this.closing.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<ServerLevel, Integer> entry = it.next();
+			ServerLevel level = entry.getKey();
+			int waited = entry.setValue(entry.getValue() + 1);
+			if (level.getChunkSource().getLoadedChunksCount() == 0 || waited > CLOSE_TIMEOUT_TICKS) {
+				it.remove();
 				ReelLevels.destroy(this.server, level);
+				return;
 			}
 		}
 	}

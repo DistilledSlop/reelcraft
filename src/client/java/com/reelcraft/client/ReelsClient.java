@@ -46,7 +46,7 @@ public final class ReelsClient {
 	/** If the server never moves us, drop the frozen frame instead of leaving it up. */
 	private static final long SWITCH_TIMEOUT_MS = 1000;
 	/** After the level arrives, give its terrain this long to be drawn before sliding, even if the renderer is still busy. */
-	private static final long RENDER_GRACE_MS = 600;
+	private static final long RENDER_GRACE_MS = 250;
 	/** Give up waiting for the frame grab and scroll anyway. */
 	private static final long CAPTURE_TIMEOUT_MS = 300;
 
@@ -62,6 +62,16 @@ public final class ReelsClient {
 	private static int queuedDir;
 	/** The first reel has been shown, so later level loads are scrolls (the initial world load keeps vanilla's screen). */
 	private static boolean feedStarted;
+
+	private static long scrollT0;
+	private static boolean traceLoading;
+
+	/** Diagnostic timeline of a scroll, in ms since it was accepted. */
+	private static void trace(String what) {
+		if (Boolean.getBoolean("reelcraft.trace")) {
+			Reelcraft.LOGGER.info("SCROLLTRACE +{}ms {}", Util.getMillis() - scrollT0, what);
+		}
+	}
 
 	private ReelsClient() {
 	}
@@ -142,6 +152,9 @@ public final class ReelsClient {
 		indexAtScroll = feed.current();
 		phase = Phase.CAPTURING;
 		phaseStart = Util.getMillis();
+		scrollT0 = phaseStart;
+		traceLoading = false;
+		trace("accepted, capturing");
 		sawLoading = false;
 		arrivedAt = 0;
 		ReelsSnapshot.capture(true);
@@ -161,6 +174,7 @@ public final class ReelsClient {
 		switch (phase) {
 			case CAPTURING -> {
 				if (ReelsSnapshot.isReady() || now - phaseStart > CAPTURE_TIMEOUT_MS) {
+					trace("snapshot ready, requesting scroll");
 					feed.requestScroll(scrollDir);
 					phase = Phase.HOLD;
 					phaseStart = now;
@@ -174,6 +188,10 @@ public final class ReelsClient {
 					}
 					return;
 				}
+				if (loadingScreen != traceLoading) {
+					traceLoading = loadingScreen;
+					trace(loadingScreen ? "server switched; loading screen up" : "loading screen closed");
+				}
 				sawLoading |= loadingScreen;
 				if (!loadingScreen && (sawLoading || now - phaseStart > 400)) {
 					if (arrivedAt == 0) {
@@ -181,11 +199,13 @@ public final class ReelsClient {
 					}
 					boolean drawn = mc.levelRenderer.hasRenderedAllSections() || now - arrivedAt > RENDER_GRACE_MS;
 					if (drawn && ReelsSnapshot.isReady()) {
+						trace("sliding (allSectionsRendered=" + mc.levelRenderer.hasRenderedAllSections() + ")");
 						phase = Phase.SLIDE;
 						phaseStart = now;
 					}
 				}
 				if (now - phaseStart > HOLD_TIMEOUT_MS) {
+					trace("HOLD TIMEOUT");
 					phase = Phase.SLIDE;
 					phaseStart = now;
 				}

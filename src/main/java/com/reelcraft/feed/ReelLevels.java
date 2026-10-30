@@ -40,6 +40,13 @@ public final class ReelLevels {
 	}
 
 	public static ServerLevel create(MinecraftServer server, long id, long seed) {
+		long t0 = System.nanoTime();
+		ServerLevel made = createInner(server, id, seed);
+		Reelcraft.LOGGER.debug("REELTIMING create reel_{} took {} ms", id, (System.nanoTime() - t0) / 1_000_000);
+		return made;
+	}
+
+	private static ServerLevel createInner(MinecraftServer server, long id, long seed) {
 		MinecraftServerAccessor access = (MinecraftServerAccessor) server;
 		ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, Reelcraft.id("reel_" + id));
 		// Must be registered before the level exists: its chunk map reads the seed while it is being constructed.
@@ -57,8 +64,7 @@ public final class ReelLevels {
 		ServerLevel level = new ServerLevel(
 			server, access.reelcraft$executor(), access.reelcraft$storageSource(), data, key, stem, false, BiomeManager.obfuscateSeed(seed), List.of(), false
 		);
-		// Reel levels are throwaway: never write their chunks.
-		level.noSave = true;
+		// Reel levels are throwaway; ChunkMapMixin stops their chunks being written.
 		access.reelcraft$levels().put(key, level);
 		level.getWorldBorder().setAbsoluteMaxSize(server.getAbsoluteMaxWorldSize());
 		server.getPlayerList().addWorldborderListener(level);
@@ -66,6 +72,12 @@ public final class ReelLevels {
 	}
 
 	public static void destroy(MinecraftServer server, ServerLevel level) {
+		long t0 = System.nanoTime();
+		destroyInner(server, level);
+		Reelcraft.LOGGER.debug("REELTIMING destroy {} took {} ms", level.dimension().identifier(), (System.nanoTime() - t0) / 1_000_000);
+	}
+
+	private static void destroyInner(MinecraftServer server, ServerLevel level) {
 		((MinecraftServerAccessor) server).reelcraft$levels().remove(level.dimension());
 		try {
 			level.close();

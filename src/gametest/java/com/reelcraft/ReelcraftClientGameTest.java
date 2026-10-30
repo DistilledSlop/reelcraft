@@ -15,6 +15,12 @@ import net.minecraft.network.chat.Component;
 public class ReelcraftClientGameTest implements FabricClientGameTest {
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		System.setProperty("reelcraft.trace", "true");
+		// Realistic render distance: the framework's default of 5 hides how long a level change really takes.
+		context.runOnClient(mc -> {
+			mc.options.renderDistance().set(12);
+			mc.options.simulationDistance().set(8);
+		});
 		context.runOnClient(mc -> ReelsLauncher.start(mc, mc.gui.screen()));
 		context.waitFor(mc -> mc.level != null && mc.player != null && ReelFeeds.active() != null && ReelFeeds.active().current() == 0, 6000);
 		context.waitTicks(40);
@@ -41,7 +47,7 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 			boolean switched = false;
 			for (int t = 0; t < 600 && quiet < 5; t++) {
 				context.waitTicks(1);
-				if (i == 2 && t < 14) {
+				if (false) {
 					context.takeScreenshot("burst-" + String.format("%02d", t));
 				}
 				boolean loading = context.computeOnClient(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);

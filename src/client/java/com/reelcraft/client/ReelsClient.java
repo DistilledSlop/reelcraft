@@ -43,19 +43,23 @@ public final class ReelsClient {
 	public static final long SLIDE_MS = 320;
 	/** How long to wait for the new level before sliding anyway, so a missed signal can never leave a frozen frame. */
 	private static final long HOLD_TIMEOUT_MS = 3000;
-	private static final long RECAPTURE_MS = 250;
+	/** If the server never moves us, drop the frozen frame instead of leaving it up. */
+	private static final long SWITCH_TIMEOUT_MS = 1000;
+	/** After the level arrives, give its terrain this long to be drawn before sliding, even if the renderer is still busy. */
+	private static final long RENDER_GRACE_MS = 600;
 	/** Give up waiting for the frame grab and scroll anyway. */
 	private static final long CAPTURE_TIMEOUT_MS = 300;
 
-	private enum Phase { IDLE, WAITING, HOLD, SLIDE }
+	private enum Phase { IDLE, CAPTURING, HOLD, SLIDE }
 
 	private static Phase phase = Phase.IDLE;
 	private static int scrollDir = 1;
 	private static int indexAtScroll = -1;
 	private static long phaseStart;
-	private static long lastCapture;
 	private static boolean sawLoading;
-	private static boolean requestSent;
+	private static long arrivedAt;
+	/** A scroll the player asked for before the next reel was ready; it starts the moment that reel is. */
+	private static int queuedDir;
 	/** The first reel has been shown, so later level loads are scrolls (the initial world load keeps vanilla's screen). */
 	private static boolean feedStarted;
 
@@ -73,6 +77,7 @@ public final class ReelsClient {
 			liked.clear();
 			feedStarted = false;
 			phase = Phase.IDLE;
+			queuedDir = 0;
 			// The feed runs at its own GUI scale (see WindowMixin).
 			mc.resizeGui();
 		}
@@ -84,7 +89,7 @@ public final class ReelsClient {
 		if (!loadingScreen && feed.current() >= 0 && mc.level != null) {
 			feedStarted = true;
 		}
-		tickSlide(feed, loadingScreen);
+		tickSlide(feed, mc, loadingScreen);
 
 
 		while (NEXT.consumeClick()) {
@@ -110,50 +115,77 @@ public final class ReelsClient {
 	private static void scroll(int dir) {
 		ReelFeed feed = ReelFeeds.active();
 		long now = Util.getMillis();
-		if (feed == null || feed.current() < 0 || now - lastScrollAt < SCROLL_COOLDOWN_MS) {
+		if (feed == null || feed.current() < 0 || now - lastScrollAt < SCROLL_COOLDOWN_MS || phase != Phase.IDLE) {
 			return;
 		}
 		lastScrollAt = now;
 		scrollRequestedAt = now;
+		if (targetReady(feed, dir)) {
+			startScroll(feed, dir);
+		} else if (dir > 0) {
+			// Next reel still generating: keep playing, and scroll as soon as it is ready.
+			queuedDir = dir;
+		}
+	}
+
+	private static boolean targetReady(ReelFeed feed, int dir) {
+		int target = feed.current() + dir;
+		return target >= 0 && target < feed.reels().size() && feed.reels().get(target).isReady() && feed.reels().get(target).level != null;
+	}
+
+	/**
+	 * The server is only asked to move once a grab of this reel exists, and the frozen frame goes up in the same instant:
+	 * the next world is preloaded, so it arrives almost immediately and anything drawn late would show empty sky.
+	 */
+	private static void startScroll(ReelFeed feed, int dir) {
 		scrollDir = dir;
 		indexAtScroll = feed.current();
-		phase = Phase.WAITING;
-		phaseStart = now;
-		lastCapture = now;
+		phase = Phase.CAPTURING;
+		phaseStart = Util.getMillis();
 		sawLoading = false;
-		// The server is only asked to move once the grab of this reel is ready: the next world is preloaded, so it would
-		// otherwise arrive before the frozen frame exists and the empty sky would show first.
-		requestSent = false;
+		arrivedAt = 0;
 		ReelsSnapshot.capture(true);
 	}
 
 	/**
-	 * Drives the scroll animation: grab the old reel, freeze it over the screen once the server has moved us, then slide
-	 * it away when the new reel's level has arrived.
+	 * Drives the scroll animation: grab the old reel, freeze it over the screen as the server moves us, then slide it
+	 * away once the new reel's level has arrived and its terrain has been drawn.
 	 */
-	private static void tickSlide(ReelFeed feed, boolean loadingScreen) {
+	private static void tickSlide(ReelFeed feed, Minecraft mc, boolean loadingScreen) {
 		long now = Util.getMillis();
+		if (queuedDir != 0 && phase == Phase.IDLE && targetReady(feed, queuedDir)) {
+			int dir = queuedDir;
+			queuedDir = 0;
+			startScroll(feed, dir);
+		}
 		switch (phase) {
-			case WAITING -> {
-				if (!requestSent) {
-					if (ReelsSnapshot.isReady() || now - phaseStart > CAPTURE_TIMEOUT_MS) {
-						requestSent = true;
-						lastCapture = now;
-						feed.requestScroll(scrollDir);
-					}
-				} else if (feed.current() != indexAtScroll) {
+			case CAPTURING -> {
+				if (ReelsSnapshot.isReady() || now - phaseStart > CAPTURE_TIMEOUT_MS) {
+					feed.requestScroll(scrollDir);
 					phase = Phase.HOLD;
 					phaseStart = now;
-				} else if (now - lastCapture > RECAPTURE_MS) {
-					// The next reel is not ready yet and play continues: keep the grab fresh.
-					lastCapture = now;
-					ReelsSnapshot.capture(false);
 				}
 			}
 			case HOLD -> {
+				boolean switched = feed.current() != indexAtScroll;
+				if (!switched) {
+					if (now - phaseStart > SWITCH_TIMEOUT_MS) {
+						phase = Phase.IDLE;
+					}
+					return;
+				}
 				sawLoading |= loadingScreen;
-				boolean arrived = !loadingScreen && (sawLoading || now - phaseStart > 400);
-				if ((arrived && ReelsSnapshot.isReady()) || now - phaseStart > HOLD_TIMEOUT_MS) {
+				if (!loadingScreen && (sawLoading || now - phaseStart > 400)) {
+					if (arrivedAt == 0) {
+						arrivedAt = now;
+					}
+					boolean drawn = mc.levelRenderer.hasRenderedAllSections() || now - arrivedAt > RENDER_GRACE_MS;
+					if (drawn && ReelsSnapshot.isReady()) {
+						phase = Phase.SLIDE;
+						phaseStart = now;
+					}
+				}
+				if (now - phaseStart > HOLD_TIMEOUT_MS) {
 					phase = Phase.SLIDE;
 					phaseStart = now;
 				}
@@ -196,6 +228,11 @@ public final class ReelsClient {
 	}
 
 	/** True once the feed is running: later level changes are scrolls, so vanilla's loading screen is not drawn. */
+	/** True from a scroll being accepted until its animation has finished. */
+	public static boolean isScrolling() {
+		return phase != Phase.IDLE;
+	}
+
 	public static boolean hidesLoadingScreen() {
 		return feedStarted && ReelFeeds.active() != null;
 	}

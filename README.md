@@ -8,6 +8,8 @@ Reelcraft is Minecraft reimagined for singleplayer as an endless, vertical, Inst
 - Each reel is its own separate world with its own random seed, created at runtime and never saved to disk.
 - The next 5 reels are pre-generated ahead of you, so scrolling is instant.
 - Scrolling teleports you into an already-loaded world. Each arrival is a fresh run: inventory reset, full health and food, a small starter kit, and your respawn point set to the reel's spawn.
+- The scroll animation grabs a frame of the current reel, holds it over the screen while the next world loads, then slides it away (about 320 ms) to reveal the next reel. No loading screen is shown during a scroll.
+- At startup the buffer fills gradually: it starts about 6 seconds after the first reel begins, and at most 2 worlds generate at once, so the first reel loads first.
 
 ## Controls
 

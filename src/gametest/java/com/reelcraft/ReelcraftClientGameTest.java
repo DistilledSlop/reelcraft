@@ -31,6 +31,7 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 		for (int i = 1; i <= 10; i++) {
 			int expected = i;
 			int levelBefore = context.computeOnClient(mc -> System.identityHashCode(mc.level));
+			context.waitFor(mc -> !com.reelcraft.client.ReelsClient.isScrolling(), 400);
 			context.waitTicks(12);
 			// Same path as a real mouse-wheel scroll down, so the client animation runs too.
 			context.runOnClient(mc -> com.reelcraft.client.ReelsClient.onWheel(-1.0));
@@ -40,19 +41,16 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 			boolean switched = false;
 			for (int t = 0; t < 600 && quiet < 5; t++) {
 				context.waitTicks(1);
+				if (i == 2 && t < 14) {
+					context.takeScreenshot("burst-" + String.format("%02d", t));
+				}
 				boolean loading = context.computeOnClient(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
 				switched |= context.computeOnClient(mc -> ReelFeeds.active().current() == expected);
 				if (loading) {
-					if (i == 2 && loadTicks == 1) {
-						context.takeScreenshot("during-load");
-					}
 					loadTicks++;
 					quiet = 0;
 				} else if (switched) {
 					quiet++;
-					if (i == 2 && quiet == 1) {
-						context.takeScreenshot("slide-start");
-					}
 				}
 			}
 			int levelAfter = context.computeOnClient(mc -> System.identityHashCode(mc.level));

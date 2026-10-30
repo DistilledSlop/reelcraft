@@ -7,8 +7,9 @@ import com.reelcraft.feed.ReelFeeds;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 
-import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.GenericMessageScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.Component;
 
 @SuppressWarnings("UnstableApiUsage")
 public class ReelcraftClientGameTest implements FabricClientGameTest {
@@ -36,8 +37,15 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 			context.takeScreenshot("reel-" + i);
 		}
 
-		context.setScreen(() -> new PauseScreen(true));
-		context.clickScreenButton("menu.returnToMenu");
-		context.waitFor(mc -> mc.gui.screen() instanceof TitleScreen && mc.getSingleplayerServer() == null, 6000);
+		// Same close sequence the framework uses for its own singleplayer worlds: it sets the title screen itself.
+		long quitStart = System.currentTimeMillis();
+		context.runOnClient(mc -> {
+			mc.level.disconnect(Component.translatable("menu.savingLevel"));
+			mc.disconnect(new GenericMessageScreen(Component.translatable("menu.savingLevel")), false);
+		});
+		context.waitFor(mc -> mc.getSingleplayerServer() == null, 600);
+		context.waitTicks(5);
+		context.setScreen(TitleScreen::new);
+		Reelcraft.LOGGER.info("QUIT OK in {} ms", System.currentTimeMillis() - quitStart);
 	}
 }

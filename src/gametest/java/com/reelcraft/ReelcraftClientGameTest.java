@@ -27,29 +27,36 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 		}, 12000);
 		context.takeScreenshot("buffer-full");
 
+		int totalLoadTicks = 0;
 		for (int i = 1; i <= 10; i++) {
 			int expected = i;
+			int levelBefore = context.computeOnClient(mc -> System.identityHashCode(mc.level));
 			context.runOnClient(mc -> ReelFeeds.active().requestScroll(1));
-			if (i == 2) {
-				// Catch the in-between frame while the level change is loading.
-				for (int t = 0; t < 120; t++) {
-					context.waitTicks(1);
-					if (context.computeOnClient(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen)) {
-						context.takeScreenshot("during-load");
-						break;
-					}
+			// Count the ticks the loading screen is up after this scroll.
+			int loadTicks = 0;
+			int quiet = 0;
+			boolean switched = false;
+			for (int t = 0; t < 600 && quiet < 5; t++) {
+				context.waitTicks(1);
+				boolean loading = context.computeOnClient(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
+				switched |= context.computeOnClient(mc -> ReelFeeds.active().current() == expected);
+				if (loading) {
+					loadTicks++;
+					quiet = 0;
+				} else if (switched) {
+					quiet++;
 				}
 			}
-			context.waitFor(mc -> ReelFeeds.active().current() == expected, 1200);
-			context.waitTicks(10);
-			if (i <= 3) {
-				context.takeScreenshot("early-" + (i + 1));
-				context.waitTicks(50);
-			}
+			int levelAfter = context.computeOnClient(mc -> System.identityHashCode(mc.level));
+			Reelcraft.LOGGER.info("CLIENTLEVEL scroll={} same={} dim={}", i, levelBefore == levelAfter, context.computeOnClient(mc -> mc.level.dimension().identifier().toString()));
+			totalLoadTicks += loadTicks;
+			Reelcraft.LOGGER.info("LOADTICKS scroll={} ticks={}", i, loadTicks);
 			if (i <= 3 || i == 10) {
+				context.waitTicks(40);
 				context.takeScreenshot("reel-" + (i + 1));
 			}
 		}
+		Reelcraft.LOGGER.info("LOADTICKS average={}", totalLoadTicks / 10.0);
 		context.runOnClient(mc -> {
 			ReelFeed feed = ReelFeeds.active();
 			Reelcraft.LOGGER.info("FEED size={} current={}", feed.reels().size(), feed.current());

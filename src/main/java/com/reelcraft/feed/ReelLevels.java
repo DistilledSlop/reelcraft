@@ -31,6 +31,10 @@ public final class ReelLevels {
 		return SEEDS.get(dimension);
 	}
 
+	public static boolean isReel(ResourceKey<Level> dimension) {
+		return SEEDS.containsKey(dimension);
+	}
+
 	public static void clear() {
 		SEEDS.clear();
 	}

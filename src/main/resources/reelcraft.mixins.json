@@ -5,7 +5,9 @@
 	"mixins": [
 		"MinecraftServerAccessor",
 		"MinecraftServerMixin",
-		"ServerLevelMixin"
+		"ServerLevelMixin",
+		"ServerPlayerMixin",
+		"StructurePaletteMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

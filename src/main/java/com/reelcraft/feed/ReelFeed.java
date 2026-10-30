@@ -38,8 +38,14 @@ public final class ReelFeed {
 	public static final int HISTORY = 2;
 	/** Chunk radius generated per reel before it becomes READY. */
 	public static final int PRELOAD_RADIUS = 4;
-	/** Spawn candidates are sampled this far (blocks) around each new world's origin. */
-	private static final int SPAWN_SPREAD = 4000;
+	/** Spawn candidates are sampled this far (blocks) around the centre of the reel's own region. */
+	private static final int SPAWN_SPREAD = 1500;
+	/**
+	 * Every reel gets its own region of the coordinate space, far from the previous ones. The client keeps one level for
+	 * the whole feed, so this guarantees a new reel never lands on stale chunks left over from an earlier one.
+	 */
+	private static final int REGION_SPACING = 40_000;
+	private static final int REGION_COUNT = 700;
 	private static final int SPAWN_CANDIDATES = 64;
 	/** A new reel avoids the biomes of this many reels before it, when it can. */
 	private static final int VARIETY_WINDOW = 4;
@@ -187,7 +193,8 @@ public final class ReelFeed {
 		BiomeResolver resolver = resolver(level);
 		BlockPos fallback = null;
 		for (int i = 0; i < SPAWN_CANDIDATES; i++) {
-			int x = this.random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD);
+			int centerX = (int) ((reel.id % REGION_COUNT) - REGION_COUNT / 2) * REGION_SPACING;
+			int x = centerX + this.random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD);
 			int z = this.random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD);
 			int y = generator.getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, level, randomState);
 			if (y <= level.getSeaLevel() + 1) {
@@ -201,7 +208,7 @@ public final class ReelFeed {
 				return pos;
 			}
 		}
-		return fallback != null ? fallback : new BlockPos(0, level.getSeaLevel() + 1, 0);
+		return fallback != null ? fallback : new BlockPos((int) ((reel.id % REGION_COUNT) - REGION_COUNT / 2) * REGION_SPACING, level.getSeaLevel() + 1, 0);
 	}
 
 	/** True if one of the few reels before this one already used the same biome. */

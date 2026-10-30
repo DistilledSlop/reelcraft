@@ -126,7 +126,7 @@ public final class ReelsClient {
 
 	/**
 	 * Sideways view-space shift that moves a first-person hand from the edge of the full window into the 9:16 column.
-	 * Hands sit about 0.6 units off-centre and are large, so pull them a bit further than the plain width ratio to keep them inside the column.
+	 * Hands sit about 0.6 units off-centre; the column is {@code ratio} of the window width, so scale that offset by it. Pulling further than this puts the item near the centre of the view.
 	 */
 	public static float handShift(InteractionHand hand) {
 		Minecraft mc = Minecraft.getInstance();
@@ -138,7 +138,7 @@ public final class ReelsClient {
 		HumanoidArm mainArm = mc.player.getMainArm();
 		HumanoidArm arm = hand == InteractionHand.MAIN_HAND ? mainArm : (mainArm == HumanoidArm.RIGHT ? HumanoidArm.LEFT : HumanoidArm.RIGHT);
 		float side = arm == HumanoidArm.RIGHT ? 1.0F : -1.0F;
-		return -side * (1.0F - ratio) * 0.8F;
+		return -side * (1.0F - ratio) * 0.6F;
 	}
 
 	/** True shortly after a scroll that is still waiting for the next reel to finish generating. */

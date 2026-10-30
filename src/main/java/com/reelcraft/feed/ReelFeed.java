@@ -41,6 +41,7 @@ public final class ReelFeed {
 	private volatile int current = -1;
 	private int pendingScroll;
 	private long nextId;
+	private volatile boolean stopping;
 
 	public ReelFeed(MinecraftServer server) {
 		this.server = server;
@@ -79,8 +80,20 @@ public final class ReelFeed {
 		this.server.execute(() -> this.pendingScroll = Integer.signum(dir));
 	}
 
+	/** Stop all background work and release every chunk ticket so the server can shut down quickly. */
+	public void shutdown() {
+		this.stopping = true;
+		ServerLevel level = this.server.overworld();
+		for (Reel reel : this.reels) {
+			if (reel.chunk != null && reel.state != Reel.State.SEARCHING) {
+				level.getChunkSource().removeTicketWithRadius(TicketType.PLAYER_LOADING, reel.chunk, PRELOAD_RADIUS);
+				reel.chunk = null;
+			}
+		}
+	}
+
 	public void tick() {
-		if (this.current < 0) {
+		if (this.stopping || this.current < 0) {
 			return;
 		}
 		int ahead = this.reels.size() - 1 - this.current;
@@ -128,6 +141,9 @@ public final class ReelFeed {
 
 	/** Step 1: load only the centre chunk and make sure the spot is land worth looking at. */
 	private void search(Reel reel) {
+		if (this.stopping) {
+			return;
+		}
 		ServerLevel level = this.server.overworld();
 		ChunkPos pos = reel.chunk;
 		reel.attempts++;
@@ -135,6 +151,9 @@ public final class ReelFeed {
 			BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getMiddleBlockPosition(0));
 			boolean bad = !level.getFluidState(surface.below()).isEmpty() || surface.getY() <= level.getSeaLevel() - 2;
 			level.getChunkSource().removeTicketWithRadius(TicketType.PLAYER_LOADING, pos, 0);
+			if (this.stopping) {
+				return;
+			}
 			if (bad && reel.attempts < MAX_ATTEMPTS) {
 				reel.chunk = randomChunk();
 				this.search(reel);
@@ -149,9 +168,16 @@ public final class ReelFeed {
 
 	/** Step 2: generate the surroundings so the player never sees a loading screen. */
 	private void generate(Reel reel) {
+		if (this.stopping) {
+			reel.chunk = null;
+			return;
+		}
 		ServerLevel level = this.server.overworld();
 		ChunkPos pos = reel.chunk;
 		level.getChunkSource().addTicketAndLoadWithRadius(TicketType.PLAYER_LOADING, pos, PRELOAD_RADIUS).thenRunAsync(() -> {
+			if (this.stopping) {
+				return;
+			}
 			reel.state = Reel.State.READY;
 			Reelcraft.LOGGER.debug("Reel {} ready at {} ({})", reel.id, reel.spawn, reel.biome);
 		}, this.server);

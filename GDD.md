@@ -21,9 +21,9 @@ Portrait 9:16 column centred in the window, pillarboxed with dark bars; the worl
 
 ## Milestones
 1. [x] Scaffold from fabric-example-mod (26.3), rename to Reelcraft.
-2. [ ] Title screen Singleplayer -> auto-created feed world.
-3. [ ] Server-side `ReelFeed`: reel model, location search, chunk pre-generation buffer, teleport/reset on scroll.
-4. [ ] Input: scroll wheel + keybinds.
-5. [ ] Reels HUD (pillarbox, rails, nav, buffer pips).
-6. [ ] Swipe transition.
+2. [x] Title screen Singleplayer -> auto-created feed world.
+3. [x] Server-side `ReelFeed`: reel model, location search, chunk pre-generation buffer, teleport/reset on scroll.
+4. [x] Input: scroll wheel + keybinds.
+5. [x] Reels HUD (pillarbox, rails, nav, buffer pips).
+6. [~] Swipe transition (placeholder curtain; real frame-snapshot swipe still to do).
 7. [ ] Polish: likes/comments flavour, death handling, config, lang file.

@@ -150,20 +150,31 @@ public final class ReelsHud {
 	private static void rail(GuiGraphicsExtractor g, Font font, Reel reel, int x1) {
 		int h = g.guiHeight();
 		int cx = x1 - 8 - ICON / 2;
-		int y = h - NAV_H - 22 - 28 - 150;
+		// Flow the rail between the top bar and the caption block, tightening spacing on small windows.
+		int top = 40;
+		int limit = captionTop(h) - 8;
+		int step = Mth.clamp((limit - top) / 5, 22, 36);
+		boolean counts = step >= 30;
 		boolean liked = ReelsClient.isLiked(reel);
 
+		int y = top;
 		icon(g, liked ? "heart" : "heart_outline", cx - ICON / 2, y, liked ? LIKE_RED : WHITE);
-		count(g, font, Reel.compact(reel.likes() + (liked ? 1 : 0)), cx, y + ICON + 2);
-		y += 34;
+		if (counts) {
+			count(g, font, Reel.compact(reel.likes() + (liked ? 1 : 0)), cx, y + ICON + 2);
+		}
+		y += step;
 		icon(g, "comment", cx - ICON / 2, y, WHITE);
-		count(g, font, Reel.compact(reel.comments()), cx, y + ICON + 2);
-		y += 34;
+		if (counts) {
+			count(g, font, Reel.compact(reel.comments()), cx, y + ICON + 2);
+		}
+		y += step;
 		icon(g, "share", cx - ICON / 2, y, WHITE);
-		count(g, font, Reel.compact(reel.shares()), cx, y + ICON + 2);
-		y += 32;
+		if (counts) {
+			count(g, font, Reel.compact(reel.shares()), cx, y + ICON + 2);
+		}
+		y += step;
 		icon(g, "more", cx - ICON / 2, y, WHITE);
-		y += 26;
+		y += step;
 
 		// Audio thumbnail: a music disc that spins, framed like the rounded square on Reels.
 		g.fill(cx - 10, y - 2, cx + 10, y + 18, WHITE);
@@ -173,6 +184,11 @@ public final class ReelsHud {
 		g.pose().rotate((Util.getMillis() % 4000L) / 4000.0F * Mth.TWO_PI);
 		g.blitSprite(GUI, sprite("music_disc"), -ICON / 2, -ICON / 2, ICON, ICON, WHITE);
 		g.pose().popMatrix();
+	}
+
+	/** Top of the creator row; sits above the (lifted) vanilla hotbar and status bars. */
+	private static int captionTop(int h) {
+		return h - NAV_H - 22 - 28 - 46;
 	}
 
 	private static void count(GuiGraphicsExtractor g, Font font, String text, int cx, int y) {
@@ -185,19 +201,21 @@ public final class ReelsHud {
 		int bottom = h - NAV_H - 22 - 28;
 		g.fillGradient(x0, bottom - 70, x0 + columnWidth(g), bottom + 6, 0x00000000, 0x88000000);
 
-		int y = bottom - 46;
+		int y = captionTop(h);
 		// Avatar + handle + verified + follow.
 		g.fill(x, y, x + 18, y + 18, WHITE);
 		g.fill(x + 1, y + 1, x + 17, y + 17, 0xFF000000 | (int) (0x303030 + (reel.id * 0x2F5A3L) % 0x707070));
 		g.blitSprite(GUI, sprite("profile"), x + 1, y + 1, 16, 16, WHITE);
-		String handle = reel.handle();
-		g.text(font, Component.literal(handle).withStyle(ChatFormatting.BOLD), x + 24, y + 5, WHITE);
+		Component handle = Component.literal(reel.handle()).withStyle(ChatFormatting.BOLD);
+		g.text(font, handle, x + 24, y + 5, WHITE);
 		int hx = x + 24 + font.width(handle) + 4;
-		g.blitSprite(GUI, sprite("verified"), hx, y + 1, 12, 12, 0xFF3797F0);
+		g.blitSprite(GUI, sprite("verified"), hx, y + 3, 12, 12, 0xFF3797F0);
 		int fx = hx + 18;
 		int fw = font.width("Follow") + 10;
-		g.outline(fx, y + 2, fw, 14, WHITE);
-		g.text(font, "Follow", fx + 5, y + 5, WHITE);
+		if (fx + fw < x0 + columnWidth(g) - 36) {
+			g.outline(fx, y + 2, fw, 14, WHITE);
+			g.text(font, "Follow", fx + 5, y + 5, WHITE);
+		}
 
 		// Caption line.
 		y += 24;

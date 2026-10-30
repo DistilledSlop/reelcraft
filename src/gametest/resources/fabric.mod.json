@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "reelcraft-test",
+	"version": "1.0.0",
+	"name": "Reelcraft Tests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"com.reelcraft.ReelcraftClientGameTest"
+		]
+	},
+	"depends": {
+		"reelcraft": "*"
+	}
+}

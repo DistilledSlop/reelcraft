@@ -25,6 +25,11 @@ public final class ReelFeeds {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			active = isFeedWorld(server) ? new ReelFeed(server) : null;
 		});
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			if (active != null) {
+				active.shutdown();
+			}
+		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> active = null);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			if (active != null) {

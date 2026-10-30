@@ -4,7 +4,8 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"MouseHandlerMixin",
-		"TitleScreenMixin"
+		"TitleScreenMixin",
+		"WindowMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

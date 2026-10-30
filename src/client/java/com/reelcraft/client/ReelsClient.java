@@ -55,6 +55,8 @@ public final class ReelsClient {
 			lastIndex = -1;
 			liked.clear();
 			transitionStart = Long.MIN_VALUE;
+			// The feed runs at its own GUI scale (see WindowMixin).
+			mc.resizeGui();
 		}
 		if (feed == null) {
 			return;

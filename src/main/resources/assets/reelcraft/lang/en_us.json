@@ -1,0 +1,8 @@
+{
+	"key.category.reelcraft.reels": "Reelcraft",
+	"key.reelcraft.next_reel": "Next Reel (scroll down)",
+	"key.reelcraft.prev_reel": "Previous Reel (scroll up)",
+	"key.reelcraft.like": "Like Reel",
+	"reelcraft.singleplayer.tooltip": "Opens the endless Reels feed. Shift-click for the classic world list.",
+	"reelcraft.loading_next": "Loading next reel..."
+}

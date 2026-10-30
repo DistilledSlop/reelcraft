@@ -3,7 +3,8 @@
 	"package": "com.reelcraft.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"ReelcraftClientMixin"
+		"MouseHandlerMixin",
+		"TitleScreenMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

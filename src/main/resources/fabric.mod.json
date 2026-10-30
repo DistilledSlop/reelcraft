@@ -19,7 +19,6 @@
 		]
 	},
 	"mixins": [
-		"reelcraft.mixins.json",
 		{
 			"config": "reelcraft.client.mixins.json",
 			"environment": "client"

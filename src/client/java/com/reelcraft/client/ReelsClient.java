@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.Window;
 import com.reelcraft.Reelcraft;
 import com.reelcraft.feed.Reel;
 import com.reelcraft.feed.ReelFeed;
@@ -15,6 +16,8 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.util.Util;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
 
 /** Client-side feed state: input, likes, and the scroll transition clock. */
 public final class ReelsClient {
@@ -119,6 +122,23 @@ public final class ReelsClient {
 
 	public static int transitionDir() {
 		return transitionDir;
+	}
+
+	/**
+	 * Sideways view-space shift that moves a first-person hand from the edge of the full window into the 9:16 column.
+	 * Hands sit about 0.6 units off-centre and are large, so pull them a bit further than the plain width ratio to keep them inside the column.
+	 */
+	public static float handShift(InteractionHand hand) {
+		Minecraft mc = Minecraft.getInstance();
+		if (ReelFeeds.active() == null || mc.player == null) {
+			return 0.0F;
+		}
+		Window window = mc.getWindow();
+		float ratio = Math.min(window.getWidth(), window.getHeight() * 9 / 16.0F) / window.getWidth();
+		HumanoidArm mainArm = mc.player.getMainArm();
+		HumanoidArm arm = hand == InteractionHand.MAIN_HAND ? mainArm : (mainArm == HumanoidArm.RIGHT ? HumanoidArm.LEFT : HumanoidArm.RIGHT);
+		float side = arm == HumanoidArm.RIGHT ? 1.0F : -1.0F;
+		return -side * (1.0F - ratio) * 0.8F;
 	}
 
 	/** True shortly after a scroll that is still waiting for the next reel to finish generating. */

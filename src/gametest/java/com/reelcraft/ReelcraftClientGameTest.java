@@ -27,15 +27,20 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 		}, 12000);
 		context.takeScreenshot("buffer-full");
 
-		for (int i = 2; i <= 3; i++) {
-			int expected = i - 1;
+		for (int i = 1; i <= 10; i++) {
+			int expected = i;
 			context.runOnClient(mc -> ReelFeeds.active().requestScroll(1));
-			context.waitFor(mc -> ReelFeeds.active().current() == expected, 600);
-			context.waitTicks(5);
-			context.takeScreenshot("reel-" + i + "-swipe");
-			context.waitTicks(60);
-			context.takeScreenshot("reel-" + i);
+			context.waitFor(mc -> ReelFeeds.active().current() == expected, 1200);
+			context.waitTicks(10);
+			if (i == 1 || i == 10) {
+				context.takeScreenshot("reel-" + (i + 1));
+			}
 		}
+		context.runOnClient(mc -> {
+			ReelFeed feed = ReelFeeds.active();
+			Reelcraft.LOGGER.info("FEED size={} current={}", feed.reels().size(), feed.current());
+			feed.reels().forEach(r -> Reelcraft.LOGGER.info("FEED reel id={} state={} spawn={} biome={} handle={}", r.id, r.state, r.spawn, r.biome, r.handle()));
+		});
 
 		// Same close sequence the framework uses for its own singleplayer worlds: it sets the title screen itself.
 		long quitStart = System.currentTimeMillis();

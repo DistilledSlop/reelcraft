@@ -3,6 +3,7 @@
 	"package": "com.reelcraft.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"FirstPersonHandsMixin",
 		"MouseHandlerMixin",
 		"TitleScreenMixin",
 		"WindowMixin"

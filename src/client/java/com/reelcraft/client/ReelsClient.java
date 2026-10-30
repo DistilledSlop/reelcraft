@@ -40,6 +40,22 @@ public final class ReelsClient {
 	private static ReelFeed lastFeed;
 	private static long lastScrollAt;
 	private static long scrollRequestedAt;
+	public static final long SLIDE_MS = 320;
+	/** How long to wait for the new level before sliding anyway, so a missed signal can never leave a frozen frame. */
+	private static final long HOLD_TIMEOUT_MS = 3000;
+	private static final long RECAPTURE_MS = 250;
+	/** Give up waiting for the frame grab and scroll anyway. */
+	private static final long CAPTURE_TIMEOUT_MS = 300;
+
+	private enum Phase { IDLE, WAITING, HOLD, SLIDE }
+
+	private static Phase phase = Phase.IDLE;
+	private static int scrollDir = 1;
+	private static int indexAtScroll = -1;
+	private static long phaseStart;
+	private static long lastCapture;
+	private static boolean sawLoading;
+	private static boolean requestSent;
 	/** The first reel has been shown, so later level loads are scrolls (the initial world load keeps vanilla's screen). */
 	private static boolean feedStarted;
 
@@ -56,6 +72,7 @@ public final class ReelsClient {
 			lastFeed = feed;
 			liked.clear();
 			feedStarted = false;
+			phase = Phase.IDLE;
 			// The feed runs at its own GUI scale (see WindowMixin).
 			mc.resizeGui();
 		}
@@ -67,6 +84,7 @@ public final class ReelsClient {
 		if (!loadingScreen && feed.current() >= 0 && mc.level != null) {
 			feedStarted = true;
 		}
+		tickSlide(feed, loadingScreen);
 
 
 		while (NEXT.consumeClick()) {
@@ -97,7 +115,73 @@ public final class ReelsClient {
 		}
 		lastScrollAt = now;
 		scrollRequestedAt = now;
-		feed.requestScroll(dir);
+		scrollDir = dir;
+		indexAtScroll = feed.current();
+		phase = Phase.WAITING;
+		phaseStart = now;
+		lastCapture = now;
+		sawLoading = false;
+		// The server is only asked to move once the grab of this reel is ready: the next world is preloaded, so it would
+		// otherwise arrive before the frozen frame exists and the empty sky would show first.
+		requestSent = false;
+		ReelsSnapshot.capture(true);
+	}
+
+	/**
+	 * Drives the scroll animation: grab the old reel, freeze it over the screen once the server has moved us, then slide
+	 * it away when the new reel's level has arrived.
+	 */
+	private static void tickSlide(ReelFeed feed, boolean loadingScreen) {
+		long now = Util.getMillis();
+		switch (phase) {
+			case WAITING -> {
+				if (!requestSent) {
+					if (ReelsSnapshot.isReady() || now - phaseStart > CAPTURE_TIMEOUT_MS) {
+						requestSent = true;
+						lastCapture = now;
+						feed.requestScroll(scrollDir);
+					}
+				} else if (feed.current() != indexAtScroll) {
+					phase = Phase.HOLD;
+					phaseStart = now;
+				} else if (now - lastCapture > RECAPTURE_MS) {
+					// The next reel is not ready yet and play continues: keep the grab fresh.
+					lastCapture = now;
+					ReelsSnapshot.capture(false);
+				}
+			}
+			case HOLD -> {
+				sawLoading |= loadingScreen;
+				boolean arrived = !loadingScreen && (sawLoading || now - phaseStart > 400);
+				if ((arrived && ReelsSnapshot.isReady()) || now - phaseStart > HOLD_TIMEOUT_MS) {
+					phase = Phase.SLIDE;
+					phaseStart = now;
+				}
+			}
+			case SLIDE -> {
+				if (now - phaseStart >= SLIDE_MS) {
+					phase = Phase.IDLE;
+				}
+			}
+			default -> {
+			}
+		}
+	}
+
+	/**
+	 * Vertical offset (GUI pixels) at which to draw the frozen old reel, or null when nothing should be drawn. Scrolling
+	 * down pushes the old reel up and off; scrolling up pulls it down.
+	 */
+	public static Integer snapshotOffset(int guiHeight) {
+		if (phase == Phase.HOLD) {
+			return 0;
+		}
+		if (phase == Phase.SLIDE) {
+			float t = Math.min(1.0F, (Util.getMillis() - phaseStart) / (float) SLIDE_MS);
+			float eased = 1.0F - (1.0F - t) * (1.0F - t) * (1.0F - t);
+			return Math.round(eased * guiHeight) * (scrollDir > 0 ? -1 : 1);
+		}
+		return null;
 	}
 
 	private static void toggleLike() {

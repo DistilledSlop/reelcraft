@@ -51,6 +51,12 @@ public final class ReelFeed {
 	private static final int VARIETY_WINDOW = 4;
 	/** Creating a level hitches the server a little, so space them out. */
 	private static final int CREATE_COOLDOWN_TICKS = 10;
+	/**
+	 * Startup: let the first reel's own terrain finish streaming in before the buffer starts competing for the same
+	 * worker threads, then fill it a couple of worlds at a time instead of all at once.
+	 */
+	private static final int START_DELAY_TICKS = 120;
+	private static final int MAX_GENERATING = 2;
 
 	private final MinecraftServer server;
 	private final RandomSource random = RandomSource.create();
@@ -58,6 +64,7 @@ public final class ReelFeed {
 	private volatile int current = -1;
 	private int pendingScroll;
 	private int createCooldown;
+	private int ticksSinceBegin;
 	private long nextId;
 	private volatile boolean stopping;
 
@@ -114,11 +121,13 @@ public final class ReelFeed {
 		if (this.stopping || this.current < 0) {
 			return;
 		}
+		this.ticksSinceBegin++;
 		if (this.createCooldown > 0) {
 			this.createCooldown--;
 		}
 		int ahead = this.reels.size() - 1 - this.current;
-		if (ahead < BUFFER_AHEAD && this.createCooldown == 0) {
+		boolean warmedUp = this.ticksSinceBegin >= START_DELAY_TICKS;
+		if (ahead < BUFFER_AHEAD && this.createCooldown == 0 && warmedUp && this.generating() < MAX_GENERATING) {
 			this.createCooldown = CREATE_COOLDOWN_TICKS;
 			this.startReel();
 		}
@@ -136,6 +145,17 @@ public final class ReelFeed {
 			}
 			// Otherwise leave a forward request pending until the next reel finishes generating.
 		}
+	}
+
+	/** Reels that are still being created (searching or generating chunks). */
+	private int generating() {
+		int count = 0;
+		for (Reel reel : this.reels) {
+			if (reel.level != null && !reel.isReady()) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	private void moveTo(int index) {

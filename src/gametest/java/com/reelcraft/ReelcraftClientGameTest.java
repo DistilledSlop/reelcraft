@@ -31,7 +31,9 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 		for (int i = 1; i <= 10; i++) {
 			int expected = i;
 			int levelBefore = context.computeOnClient(mc -> System.identityHashCode(mc.level));
-			context.runOnClient(mc -> ReelFeeds.active().requestScroll(1));
+			context.waitTicks(12);
+			// Same path as a real mouse-wheel scroll down, so the client animation runs too.
+			context.runOnClient(mc -> com.reelcraft.client.ReelsClient.onWheel(-1.0));
 			// Count the ticks the loading screen is up after this scroll.
 			int loadTicks = 0;
 			int quiet = 0;
@@ -48,6 +50,9 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 					quiet = 0;
 				} else if (switched) {
 					quiet++;
+					if (i == 2 && quiet == 1) {
+						context.takeScreenshot("slide-start");
+					}
 				}
 			}
 			int levelAfter = context.computeOnClient(mc -> System.identityHashCode(mc.level));

@@ -119,6 +119,12 @@ public final class ReelsHud {
 		if (ReelsClient.waitingForNext()) {
 			g.centeredText(font, Component.translatable("reelcraft.loading_next"), w / 2, h / 2, WHITE);
 		}
+
+		// The old reel, frozen and sliding away; drawn last so it covers everything, live HUD included.
+		Integer offset = ReelsClient.snapshotOffset(h);
+		if (offset != null) {
+			ReelsSnapshot.draw(g, offset);
+		}
 	}
 
 	private static void topBar(GuiGraphicsExtractor g, Font font, ReelFeed feed, int x0, int cw) {

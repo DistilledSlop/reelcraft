@@ -3,7 +3,9 @@
 	"package": "com.reelcraft.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
-		"MinecraftServerMixin"
+		"MinecraftServerAccessor",
+		"MinecraftServerMixin",
+		"ServerLevelMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -34,6 +34,7 @@ public final class ReelsHud {
 	private static final int DIM = 0xFFA8A8A8;
 	private static final int LIKE_RED = 0xFFFF3040;
 	private static final int PILLAR = 0xFF000000;
+	private static final int CURTAIN = 0xFF101010;
 	private static final RenderPipeline GUI = RenderPipelines.GUI_TEXTURED;
 
 	private static final List<Identifier> SHIFTED = List.of(
@@ -240,6 +241,16 @@ public final class ReelsHud {
 		}
 	}
 
+	/** The full-window curtain shown while a scroll's level change loads; the swipe in {@link #transition} slides it away. */
+	public static void extractCover(GuiGraphicsExtractor g) {
+		Font font = Minecraft.getInstance().font;
+		int x0 = columnX(g);
+		int x1 = x0 + columnWidth(g);
+		g.fill(0, 0, g.guiWidth(), g.guiHeight(), PILLAR);
+		g.fill(x0, 0, x1, g.guiHeight(), CURTAIN);
+		g.centeredText(font, Component.literal("Reels").withStyle(ChatFormatting.BOLD), (x0 + x1) / 2, g.guiHeight() / 2 - 4, WHITE);
+	}
+
 	/** Covers the teleport with a vertical swipe, like the previous reel sliding out of view. */
 	private static void transition(GuiGraphicsExtractor g, Font font, int x0, int x1, int h) {
 		float p = ReelsClient.transitionProgress();
@@ -252,7 +263,7 @@ public final class ReelsHud {
 		int offset = Math.round(eased * h) * (dir > 0 ? -1 : 1);
 		int top = offset;
 		g.enableScissor(x0, 0, x1, h - NAV_H);
-		g.fill(x0, top, x1, top + h, 0xFF101010);
+		g.fill(x0, top, x1, top + h, CURTAIN);
 		g.centeredText(font, Component.literal("Reels").withStyle(ChatFormatting.BOLD), (x0 + x1) / 2, top + h / 2 - 4, WHITE);
 		g.disableScissor();
 	}

@@ -18,30 +18,40 @@ import net.minecraft.world.entity.Relative;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeResolver;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 import net.minecraft.world.level.storage.LevelData;
 
 /**
- * Server-side feed. Keeps the current reel plus {@link #BUFFER_AHEAD} reels searched, generated and chunk-loaded
- * ahead of time, so scrolling is just a teleport onto already-loaded terrain.
+ * Server-side feed. Every reel is its own level with its own random seed, so each one is a genuinely different world.
+ * The feed keeps the current reel plus {@link #BUFFER_AHEAD} reels created, spawn-searched and chunk-generated ahead
+ * of time; scrolling is just a teleport into a level that is already loaded. Reels far behind are closed.
  */
 public final class ReelFeed {
 	public static final int BUFFER_AHEAD = 5;
-	/** Reels behind the current one that keep their chunks, so scrolling back is instant too. */
-	public static final int HISTORY = 1;
+	/** Reels behind the current one that stay loaded, so scrolling back is instant too. */
+	public static final int HISTORY = 2;
 	/** Chunk radius generated per reel before it becomes READY. */
 	public static final int PRELOAD_RADIUS = 4;
-	private static final int SPREAD_CHUNKS = 150_000;
-	private static final int MAX_ATTEMPTS = 24;
+	/** Spawn candidates are sampled this far (blocks) around each new world's origin. */
+	private static final int SPAWN_SPREAD = 4000;
+	private static final int SPAWN_CANDIDATES = 64;
 	/** A new reel avoids the biomes of this many reels before it, when it can. */
 	private static final int VARIETY_WINDOW = 4;
+	/** Creating a level hitches the server a little, so space them out. */
+	private static final int CREATE_COOLDOWN_TICKS = 10;
 
 	private final MinecraftServer server;
 	private final RandomSource random = RandomSource.create();
 	private final List<Reel> reels = new CopyOnWriteArrayList<>();
 	private volatile int current = -1;
 	private int pendingScroll;
+	private int createCooldown;
 	private long nextId;
 	private volatile boolean stopping;
 
@@ -63,14 +73,18 @@ public final class ReelFeed {
 		return i >= 0 && i < this.reels.size() ? this.reels.get(i) : null;
 	}
 
-	/** Called when the player joins: the world spawn they landed on becomes reel #1. */
+	/** Called when the player joins: the world spawn they landed on (the server's own world) becomes reel #1. */
 	public void begin(ServerPlayer player) {
 		if (!this.reels.isEmpty()) {
 			return;
 		}
-		Reel first = new Reel(this.nextId++, this.random.nextLong(), player.chunkPosition());
+		ServerLevel level = this.server.overworld();
+		Reel first = new Reel(this.nextId++, this.random.nextLong());
+		first.level = level;
+		first.seed = level.getSeed();
+		first.chunk = player.chunkPosition();
 		first.spawn = player.blockPosition();
-		first.biome = biomeName(player.level(), first.spawn);
+		first.biome = biomeName(level, first.spawn);
 		first.state = Reel.State.READY;
 		this.reels.add(first);
 		this.current = 0;
@@ -85,12 +99,8 @@ public final class ReelFeed {
 	/** Stop all background work and release every chunk ticket so the server can shut down quickly. */
 	public void shutdown() {
 		this.stopping = true;
-		ServerLevel level = this.server.overworld();
 		for (Reel reel : this.reels) {
-			if (reel.chunk != null && reel.state != Reel.State.SEARCHING) {
-				level.getChunkSource().removeTicketWithRadius(TicketType.PLAYER_LOADING, reel.chunk, PRELOAD_RADIUS);
-				reel.chunk = null;
-			}
+			this.releaseChunks(reel);
 		}
 	}
 
@@ -98,21 +108,27 @@ public final class ReelFeed {
 		if (this.stopping || this.current < 0) {
 			return;
 		}
+		if (this.createCooldown > 0) {
+			this.createCooldown--;
+		}
 		int ahead = this.reels.size() - 1 - this.current;
-		if (ahead < BUFFER_AHEAD) {
-			Reel reel = new Reel(this.nextId++, this.random.nextLong(), randomChunk());
-			this.reels.add(reel);
-			this.search(reel);
+		if (ahead < BUFFER_AHEAD && this.createCooldown == 0) {
+			this.createCooldown = CREATE_COOLDOWN_TICKS;
+			this.startReel();
 		}
 		if (this.pendingScroll != 0) {
 			int target = this.current + this.pendingScroll;
+			if (target < 0 || target >= this.reels.size() || this.reels.get(target).level == null && target < this.current) {
+				// Nothing before the first reel, and reels that have been closed are gone for good.
+				if (target < this.current) {
+					this.pendingScroll = 0;
+				}
+			}
 			if (target >= 0 && target < this.reels.size() && this.reels.get(target).isReady()) {
 				this.pendingScroll = 0;
 				this.moveTo(target);
-			} else if (target < 0) {
-				this.pendingScroll = 0;
 			}
-			// Otherwise leave the request pending until the next reel finishes generating.
+			// Otherwise leave a forward request pending until the next reel finishes generating.
 		}
 	}
 
@@ -123,52 +139,69 @@ public final class ReelFeed {
 		}
 		this.current = index;
 		this.enter(player, this.reels.get(index));
-		this.releaseOld();
+		this.retireOld();
 	}
 
-	private void releaseOld() {
-		ServerLevel level = this.server.overworld();
+	/** Close the levels of reels that are too far behind to scroll back to. */
+	private void retireOld() {
 		for (int i = 0; i < this.current - HISTORY; i++) {
 			Reel old = this.reels.get(i);
-			if (old.chunk != null && old.state != Reel.State.SEARCHING) {
-				level.getChunkSource().removeTicketWithRadius(TicketType.PLAYER_LOADING, old.chunk, PRELOAD_RADIUS);
-				old.chunk = null;
+			ServerLevel level = old.level;
+			if (level != null && level != this.server.overworld()) {
+				this.releaseChunks(old);
+				old.level = null;
+				ReelLevels.destroy(this.server, level);
 			}
 		}
 	}
 
-	private ChunkPos randomChunk() {
-		return new ChunkPos(this.random.nextInt(-SPREAD_CHUNKS, SPREAD_CHUNKS), this.random.nextInt(-SPREAD_CHUNKS, SPREAD_CHUNKS));
+	private void releaseChunks(Reel reel) {
+		ServerLevel level = reel.level;
+		if (level != null && reel.chunk != null) {
+			level.getChunkSource().removeTicketWithRadius(TicketType.PLAYER_LOADING, reel.chunk, PRELOAD_RADIUS);
+			reel.chunk = null;
+		}
 	}
 
-	/** Step 1: load only the centre chunk and make sure the spot is land worth looking at. */
-	private void search(Reel reel) {
-		if (this.stopping) {
-			return;
+	/** Step 1: create a brand-new world (random seed) for the next reel and pick where in it to spawn. */
+	private void startReel() {
+		Reel reel = new Reel(this.nextId++, this.random.nextLong());
+		reel.seed = this.random.nextLong();
+		this.reels.add(reel);
+		ServerLevel level = ReelLevels.create(this.server, reel.id, reel.seed);
+		reel.level = level;
+		BlockPos spot = this.pickSpawn(reel, level);
+		reel.chunk = ChunkPos.containing(spot);
+		reel.biome = biomeAt(resolver(level), spot);
+		reel.state = Reel.State.GENERATING;
+		this.generate(reel, level);
+	}
+
+	/**
+	 * Samples the new world's terrain generator (no chunks loaded) for a spot that is dry land, preferring a biome that
+	 * none of the last few reels used.
+	 */
+	private BlockPos pickSpawn(Reel reel, ServerLevel level) {
+		ChunkGenerator generator = level.getChunkSource().getGenerator();
+		RandomState randomState = level.getChunkSource().randomState();
+		BiomeResolver resolver = resolver(level);
+		BlockPos fallback = null;
+		for (int i = 0; i < SPAWN_CANDIDATES; i++) {
+			int x = this.random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD);
+			int z = this.random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD);
+			int y = generator.getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, level, randomState);
+			if (y <= level.getSeaLevel() + 1) {
+				continue;
+			}
+			BlockPos pos = new BlockPos(x, y, z);
+			if (fallback == null) {
+				fallback = pos;
+			}
+			if (!this.recentlySeen(reel, biomeAt(resolver, pos))) {
+				return pos;
+			}
 		}
-		ServerLevel level = this.server.overworld();
-		ChunkPos pos = reel.chunk;
-		reel.attempts++;
-		level.getChunkSource().addTicketAndLoadWithRadius(TicketType.PLAYER_LOADING, pos, 0).thenRunAsync(() -> {
-			BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getMiddleBlockPosition(0));
-			String biome = biomeName(level, surface);
-			boolean bad = !level.getFluidState(surface.below()).isEmpty()
-				|| surface.getY() <= level.getSeaLevel() - 2
-				|| this.recentlySeen(reel, biome);
-			level.getChunkSource().removeTicketWithRadius(TicketType.PLAYER_LOADING, pos, 0);
-			if (this.stopping) {
-				return;
-			}
-			if (bad && reel.attempts < MAX_ATTEMPTS) {
-				reel.chunk = randomChunk();
-				this.search(reel);
-				return;
-			}
-			reel.spawn = surface;
-			reel.biome = biome;
-			reel.state = Reel.State.GENERATING;
-			this.generate(reel);
-		}, this.server);
+		return fallback != null ? fallback : new BlockPos(0, level.getSeaLevel() + 1, 0);
 	}
 
 	/** True if one of the few reels before this one already used the same biome. */
@@ -182,26 +215,24 @@ public final class ReelFeed {
 		return false;
 	}
 
-	/** Step 2: generate the surroundings so the player never sees a loading screen. */
-	private void generate(Reel reel) {
-		if (this.stopping) {
-			reel.chunk = null;
-			return;
-		}
-		ServerLevel level = this.server.overworld();
+	/** Step 2: generate the surroundings so the player never waits on terrain when they scroll in. */
+	private void generate(Reel reel, ServerLevel level) {
 		ChunkPos pos = reel.chunk;
 		level.getChunkSource().addTicketAndLoadWithRadius(TicketType.PLAYER_LOADING, pos, PRELOAD_RADIUS).thenRunAsync(() -> {
-			if (this.stopping) {
+			if (this.stopping || reel.level != level) {
 				return;
 			}
+			BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getMiddleBlockPosition(0));
+			reel.spawn = surface;
+			reel.biome = biomeName(level, surface);
 			reel.state = Reel.State.READY;
-			Reelcraft.LOGGER.debug("Reel {} ready at {} ({})", reel.id, reel.spawn, reel.biome);
+			Reelcraft.LOGGER.debug("Reel {} ready: seed {} at {} ({})", reel.id, reel.seed, reel.spawn, reel.biome);
 		}, this.server);
 	}
 
 	/** Drop the player into a reel as a fresh run. */
 	private void enter(ServerPlayer player, Reel reel) {
-		ServerLevel level = this.server.overworld();
+		ServerLevel level = reel.level;
 		BlockPos spawn = reel.spawn;
 		float yaw = this.random.nextFloat() * 360.0F - 180.0F;
 		player.teleportTo(level, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5, Set.<Relative>of(), yaw, 10.0F, true);
@@ -224,6 +255,24 @@ public final class ReelFeed {
 
 	private static String biomeName(ServerLevel level, BlockPos pos) {
 		Holder<Biome> biome = level.getBiome(pos);
+		return biome.unwrapKey().map(k -> k.identifier().getPath()).orElse("unknown");
+	}
+
+	/** A biome lookup straight from the generator's climate noise: works before any chunk exists. */
+	private static BiomeResolver resolver(ServerLevel level) {
+		ChunkGenerator generator = level.getChunkSource().getGenerator();
+		RandomState randomState = level.getChunkSource().randomState();
+		if (generator.getBiomeSource() instanceof MultiNoiseBiomeSource multiNoise) {
+			return multiNoise.createResolver(randomState.createClimateSampler(SamplerContext.EMPTY_UNCACHED));
+		}
+		return null;
+	}
+
+	private static String biomeAt(BiomeResolver resolver, BlockPos pos) {
+		if (resolver == null) {
+			return "unknown";
+		}
+		Holder<Biome> biome = resolver.getNoiseBiome(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2);
 		return biome.unwrapKey().map(k -> k.identifier().getPath()).orElse("unknown");
 	}
 }

@@ -1,6 +1,7 @@
 package com.reelcraft.feed;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 
 /**
@@ -57,15 +58,17 @@ public final class Reel {
 	private final long salt;
 	public volatile State state = State.SEARCHING;
 	public volatile ChunkPos chunk;
+	/** The reel's own level (its own seed); null once it has been unloaded, or before it exists. */
+	public volatile ServerLevel level;
+	public volatile long seed;
 	public volatile BlockPos spawn;
 	public volatile String biome = "unknown";
 	public volatile int attempts;
 
 	/** {@code salt} is random per reel, so handles, captions and counts differ every session. */
-	public Reel(long id, long salt, ChunkPos chunk) {
+	public Reel(long id, long salt) {
 		this.id = id;
 		this.salt = salt;
-		this.chunk = chunk;
 	}
 
 	public boolean isReady() {

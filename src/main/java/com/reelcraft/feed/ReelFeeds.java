@@ -30,7 +30,10 @@ public final class ReelFeeds {
 				active.shutdown();
 			}
 		});
-		ServerLifecycleEvents.SERVER_STOPPED.register(server -> active = null);
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			active = null;
+			ReelLevels.clear();
+		});
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			if (active != null) {
 				active.begin(handler.getPlayer());

@@ -30,16 +30,32 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 		for (int i = 1; i <= 10; i++) {
 			int expected = i;
 			context.runOnClient(mc -> ReelFeeds.active().requestScroll(1));
+			if (i == 2) {
+				// Catch the in-between frame while the level change is loading.
+				for (int t = 0; t < 120; t++) {
+					context.waitTicks(1);
+					if (context.computeOnClient(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen)) {
+						context.takeScreenshot("during-load");
+						break;
+					}
+				}
+			}
 			context.waitFor(mc -> ReelFeeds.active().current() == expected, 1200);
 			context.waitTicks(10);
-			if (i == 1 || i == 10) {
+			if (i <= 3) {
+				context.takeScreenshot("early-" + (i + 1));
+				context.waitTicks(50);
+			}
+			if (i <= 3 || i == 10) {
 				context.takeScreenshot("reel-" + (i + 1));
 			}
 		}
 		context.runOnClient(mc -> {
 			ReelFeed feed = ReelFeeds.active();
 			Reelcraft.LOGGER.info("FEED size={} current={}", feed.reels().size(), feed.current());
-			feed.reels().forEach(r -> Reelcraft.LOGGER.info("FEED reel id={} state={} spawn={} biome={} handle={}", r.id, r.state, r.spawn, r.biome, r.handle()));
+			feed.reels().forEach(r -> Reelcraft.LOGGER.info("FEED reel id={} state={} dim={} seed={} spawn={} biome={}", r.id, r.state, r.level == null ? "closed" : r.level.dimension().identifier(), r.seed, r.spawn, r.biome));
+			long distinct = feed.reels().stream().map(r -> r.seed).distinct().count();
+			Reelcraft.LOGGER.info("FEED distinct seeds {} of {}", distinct, feed.reels().size());
 		});
 
 		// Same close sequence the framework uses for its own singleplayer worlds: it sets the title screen itself.

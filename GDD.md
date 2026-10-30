@@ -5,9 +5,9 @@
 **Target:** Minecraft 26.3, Fabric (Loader 0.20.1, Fabric API 0.165.0+26.3), Java 25. Mod id `reelcraft`, package `com.reelcraft`.
 
 ## Design decisions
-- **One integrated server, many "worlds".** Vanilla can only run one server at a time, so every reel is a far-apart location (a distinct biome/terrain) in a single hidden world. Reels are spaced millions of blocks apart. "New world" = new random location, found and chunk-generated ahead of time.
+- **Every reel is a real, separate world.** The integrated server creates one extra overworld-type level per reel at runtime (`ReelLevels`), each with its own random seed and its own chunk generator. A small mixin makes `ServerLevel.getSeed()` return the level's own seed (vanilla returns one server-wide seed). Reel levels never save to disk. Levels more than `HISTORY` reels behind the player are closed.
 - **Singleplayer button** on the title screen skips the world-select screen. It wipes the previous feed world, creates a fresh random-seed survival world, and drops the player into reel #1.
-- **Feed buffer.** The server keeps `BUFFER_AHEAD = 5` reels generating/ready ahead of the current one. Each reel holds chunk tickets (`TicketType.FORCED`) until it falls behind the history window. Scrolling teleports the player to the next reel's spawn, which is already loaded.
+- **Feed buffer.** The server keeps `BUFFER_AHEAD = 5` reels created and chunk-generated ahead of the current one, and tops the queue up as you scroll. Spawn spots are sampled from each new world's generator (dry land, preferring a biome none of the last 4 reels used). Scrolling teleports the player into the next reel's level, which is already loaded; the feed draws its own curtain instead of vanilla's "Loading terrain" screen during the level change.
 - **Each reel is a fresh run.** On arrival: inventory reset, full health/food, small starter kit, respawn point set to the reel spawn. Dying respawns you at the reel start.
 - **Scrolling.** Mouse wheel (hotbar still on 1-9), Up/Down arrows as rebindable keys. A vertical swipe transition covers the teleport.
 

@@ -33,7 +33,9 @@ public final class ReelFeed {
 	/** Chunk radius generated per reel before it becomes READY. */
 	public static final int PRELOAD_RADIUS = 4;
 	private static final int SPREAD_CHUNKS = 150_000;
-	private static final int MAX_ATTEMPTS = 12;
+	private static final int MAX_ATTEMPTS = 24;
+	/** A new reel avoids the biomes of this many reels before it, when it can. */
+	private static final int VARIETY_WINDOW = 4;
 
 	private final MinecraftServer server;
 	private final RandomSource random = RandomSource.create();
@@ -66,7 +68,7 @@ public final class ReelFeed {
 		if (!this.reels.isEmpty()) {
 			return;
 		}
-		Reel first = new Reel(this.nextId++, player.chunkPosition());
+		Reel first = new Reel(this.nextId++, this.random.nextLong(), player.chunkPosition());
 		first.spawn = player.blockPosition();
 		first.biome = biomeName(player.level(), first.spawn);
 		first.state = Reel.State.READY;
@@ -98,7 +100,7 @@ public final class ReelFeed {
 		}
 		int ahead = this.reels.size() - 1 - this.current;
 		if (ahead < BUFFER_AHEAD) {
-			Reel reel = new Reel(this.nextId++, randomChunk());
+			Reel reel = new Reel(this.nextId++, this.random.nextLong(), randomChunk());
 			this.reels.add(reel);
 			this.search(reel);
 		}
@@ -149,7 +151,10 @@ public final class ReelFeed {
 		reel.attempts++;
 		level.getChunkSource().addTicketAndLoadWithRadius(TicketType.PLAYER_LOADING, pos, 0).thenRunAsync(() -> {
 			BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getMiddleBlockPosition(0));
-			boolean bad = !level.getFluidState(surface.below()).isEmpty() || surface.getY() <= level.getSeaLevel() - 2;
+			String biome = biomeName(level, surface);
+			boolean bad = !level.getFluidState(surface.below()).isEmpty()
+				|| surface.getY() <= level.getSeaLevel() - 2
+				|| this.recentlySeen(reel, biome);
 			level.getChunkSource().removeTicketWithRadius(TicketType.PLAYER_LOADING, pos, 0);
 			if (this.stopping) {
 				return;
@@ -160,10 +165,21 @@ public final class ReelFeed {
 				return;
 			}
 			reel.spawn = surface;
-			reel.biome = biomeName(level, surface);
+			reel.biome = biome;
 			reel.state = Reel.State.GENERATING;
 			this.generate(reel);
 		}, this.server);
+	}
+
+	/** True if one of the few reels before this one already used the same biome. */
+	private boolean recentlySeen(Reel reel, String biome) {
+		int index = this.reels.indexOf(reel);
+		for (int i = Math.max(0, index - VARIETY_WINDOW); i < index; i++) {
+			if (this.reels.get(i).biome.equals(biome)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Step 2: generate the surroundings so the player never sees a loading screen. */

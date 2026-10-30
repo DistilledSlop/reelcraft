@@ -206,7 +206,7 @@ public final class ReelsHud {
 		g.fill(x, y, x + 18, y + 18, WHITE);
 		g.fill(x + 1, y + 1, x + 17, y + 17, 0xFF000000 | (int) (0x303030 + (reel.id * 0x2F5A3L) % 0x707070));
 		g.blitSprite(GUI, sprite("profile"), x + 1, y + 1, 16, 16, WHITE);
-		Component handle = Component.literal(reel.handle()).withStyle(ChatFormatting.BOLD);
+		Component handle = Component.literal(font.plainSubstrByWidth(reel.handle(), columnWidth(g) - 24 - 16 - 34)).withStyle(ChatFormatting.BOLD);
 		g.text(font, handle, x + 24, y + 5, WHITE);
 		int hx = x + 24 + font.width(handle) + 4;
 		g.blitSprite(GUI, sprite("verified"), hx, y + 3, 12, 12, 0xFF3797F0);

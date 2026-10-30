@@ -44,3 +44,7 @@ The scroll keys are rebindable under the Reelcraft category in Controls.
 - `src/main/java/com/reelcraft/feed/`: server-side reel model, per-reel levels, and the pre-generation buffer.
 - `src/client/java/com/reelcraft/client/`: input, the Reels HUD, and client mixins.
 - `GDD.md`: the full game design document.
+
+## License
+
+Reelcraft is free software, licensed under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only).

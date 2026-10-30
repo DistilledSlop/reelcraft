@@ -41,6 +41,9 @@ public class ReelcraftClientGameTest implements FabricClientGameTest {
 				boolean loading = context.computeOnClient(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
 				switched |= context.computeOnClient(mc -> ReelFeeds.active().current() == expected);
 				if (loading) {
+					if (i == 2 && loadTicks == 1) {
+						context.takeScreenshot("during-load");
+					}
 					loadTicks++;
 					quiet = 0;
 				} else if (switched) {

@@ -20,10 +20,9 @@ import net.minecraft.client.gui.screens.LevelLoadingScreen;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
 
-/** Client-side feed state: input, likes, and the scroll transition clock. */
+/** Client-side feed state: input and likes. */
 public final class ReelsClient {
 	public static final long SCROLL_COOLDOWN_MS = 450;
-	public static final long TRANSITION_MS = 420;
 	private static final long LOADING_HINT_MS = 2500;
 
 	private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Reelcraft.id("reels"));
@@ -39,14 +38,10 @@ public final class ReelsClient {
 
 	private static final Set<Long> liked = new HashSet<>();
 	private static ReelFeed lastFeed;
-	private static int lastIndex = -1;
 	private static long lastScrollAt;
 	private static long scrollRequestedAt;
-	private static long transitionStart = Long.MIN_VALUE;
 	/** The first reel has been shown, so later level loads are scrolls (the initial world load keeps vanilla's screen). */
 	private static boolean feedStarted;
-	private static boolean loading;
-	private static int transitionDir = 1;
 
 	private ReelsClient() {
 	}
@@ -59,11 +54,8 @@ public final class ReelsClient {
 		ReelFeed feed = ReelFeeds.active();
 		if (feed != lastFeed) {
 			lastFeed = feed;
-			lastIndex = -1;
 			liked.clear();
-			transitionStart = Long.MIN_VALUE;
 			feedStarted = false;
-			loading = false;
 			// The feed runs at its own GUI scale (see WindowMixin).
 			mc.resizeGui();
 		}
@@ -75,19 +67,7 @@ public final class ReelsClient {
 		if (!loadingScreen && feed.current() >= 0 && mc.level != null) {
 			feedStarted = true;
 		}
-		boolean nowLoading = feedStarted && loadingScreen;
-		if (loading && !nowLoading) {
-			// The new reel is ready: slide the curtain away.
-			transitionStart = Util.getMillis();
-		}
-		loading = nowLoading;
 
-		int index = feed.current();
-		if (lastIndex >= 0 && index != lastIndex && index >= 0) {
-			transitionDir = Integer.signum(index - lastIndex);
-			transitionStart = Util.getMillis();
-		}
-		lastIndex = index;
 
 		while (NEXT.consumeClick()) {
 			scroll(1);
@@ -131,22 +111,9 @@ public final class ReelsClient {
 		return liked.contains(reel.id);
 	}
 
-	/** 0..1 progress of the swipe, or 1 when idle. */
-	public static float transitionProgress() {
-		if (loading) {
-			return 0.0F;
-		}
-		long elapsed = Util.getMillis() - transitionStart;
-		return elapsed < 0 || elapsed >= TRANSITION_MS ? 1.0F : (float) elapsed / TRANSITION_MS;
-	}
-
-	/** True while a scroll's level change is loading and the feed is drawing its own curtain instead of vanilla's screen. */
+	/** True once the feed is running: later level changes are scrolls, so vanilla's loading screen is not drawn. */
 	public static boolean hidesLoadingScreen() {
 		return feedStarted && ReelFeeds.active() != null;
-	}
-
-	public static int transitionDir() {
-		return transitionDir;
 	}
 
 	/**

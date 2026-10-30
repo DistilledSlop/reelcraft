@@ -7,9 +7,9 @@
 ## Design decisions
 - **Every reel is a real, separate world.** The integrated server creates one extra overworld-type level per reel at runtime (`ReelLevels`), each with its own random seed and its own chunk generator. A small mixin makes `ServerLevel.getSeed()` return the level's own seed (vanilla returns one server-wide seed). Reel levels never save to disk. Levels more than `HISTORY` reels behind the player are closed.
 - **Singleplayer button** on the title screen skips the world-select screen. It wipes the previous feed world, creates a fresh random-seed survival world, and drops the player into reel #1.
-- **Feed buffer.** The server keeps `BUFFER_AHEAD = 5` reels created and chunk-generated ahead of the current one, and tops the queue up as you scroll. Spawn spots are sampled from each new world's generator (dry land, preferring a biome none of the last 4 reels used). Scrolling teleports the player into the next reel's level, which is already loaded; the feed draws its own curtain instead of vanilla's "Loading terrain" screen during the level change.
+- **Feed buffer.** The server keeps `BUFFER_AHEAD = 5` reels created and chunk-generated ahead of the current one, and tops the queue up as you scroll. Spawn spots are sampled from each new world's generator (dry land, preferring a biome none of the last 4 reels used). Scrolling teleports the player into the next reel's level, which is already loaded. Vanilla's "Loading terrain" screen is hidden during a scroll (the feed UI stays up), and the client is told every reel is the overworld so it keeps its level.
 - **Each reel is a fresh run.** On arrival: inventory reset, full health/food, small starter kit, respawn point set to the reel spawn. Dying respawns you at the reel start.
-- **Scrolling.** Mouse wheel (hotbar still on 1-9), Up/Down arrows as rebindable keys. A vertical swipe transition covers the teleport.
+- **Scrolling.** Mouse wheel (hotbar still on 1-9), Up/Down arrows as rebindable keys. No transition overlay: the next world is already generated.
 
 ## UI (mirrors Instagram Reels, Minecraftified)
 Portrait 9:16 column centred in the window, pillarboxed with dark bars; the world is the "video".
@@ -25,5 +25,5 @@ Portrait 9:16 column centred in the window, pillarboxed with dark bars; the worl
 3. [x] Server-side `ReelFeed`: reel model, location search, chunk pre-generation buffer, teleport/reset on scroll.
 4. [x] Input: scroll wheel + keybinds.
 5. [x] Reels HUD (pillarbox, rails, nav, buffer pips).
-6. [~] Swipe transition (placeholder curtain; real frame-snapshot swipe still to do).
+6. [x] Seamless scroll: no loading screen or curtain between reels (worlds are preloaded).
 7. [ ] Polish: likes/comments flavour, death handling, config, lang file.

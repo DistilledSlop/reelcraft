@@ -14,7 +14,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.util.Util;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -34,7 +33,6 @@ public final class ReelsHud {
 	private static final int DIM = 0xFFA8A8A8;
 	private static final int LIKE_RED = 0xFFFF3040;
 	private static final int PILLAR = 0xFF000000;
-	private static final int CURTAIN = 0xFF101010;
 	private static final RenderPipeline GUI = RenderPipelines.GUI_TEXTURED;
 
 	private static final List<Identifier> SHIFTED = List.of(
@@ -63,7 +61,7 @@ public final class ReelsHud {
 			HudElementRegistry.replaceElement(element, original -> shifted(original, false));
 		}
 		HudElementRegistry.replaceElement(VanillaHudElements.CHAT, original -> shifted(original, true));
-		HudElementRegistry.addLast(Reelcraft.id("reels_overlay"), ReelsHud::extract);
+		HudElementRegistry.addLast(Reelcraft.id("reels_overlay"), (graphics, delta) -> extractFeed(graphics));
 	}
 
 	private static HudElement shifted(HudElement original, boolean chat) {
@@ -92,7 +90,8 @@ public final class ReelsHud {
 		g.blitSprite(GUI, sprite(name), x, y, ICON, ICON, color);
 	}
 
-	private static void extract(GuiGraphicsExtractor g, DeltaTracker delta) {
+	/** Draws the whole feed chrome; also called while vanilla's loading screen is open, when the HUD itself is not drawn. */
+	public static void extractFeed(GuiGraphicsExtractor g) {
 		ReelFeed feed = ReelFeeds.active();
 		Reel reel = feed == null ? null : feed.currentReel();
 		if (reel == null) {
@@ -116,7 +115,6 @@ public final class ReelsHud {
 		rail(g, font, reel, x1);
 		caption(g, font, reel, x0, h);
 		navBar(g, mc, x0, x1, h);
-		transition(g, font, x0, x1, h);
 
 		if (ReelsClient.waitingForNext()) {
 			g.centeredText(font, Component.translatable("reelcraft.loading_next"), w / 2, h / 2, WHITE);
@@ -239,32 +237,5 @@ public final class ReelsHud {
 			int cx = x0 + slot * i + slot / 2;
 			icon(g, icons[i], cx - ICON / 2, top + (NAV_H - ICON) / 2, i == 2 ? WHITE : DIM);
 		}
-	}
-
-	/** The full-window curtain shown while a scroll's level change loads; the swipe in {@link #transition} slides it away. */
-	public static void extractCover(GuiGraphicsExtractor g) {
-		Font font = Minecraft.getInstance().font;
-		int x0 = columnX(g);
-		int x1 = x0 + columnWidth(g);
-		g.fill(0, 0, g.guiWidth(), g.guiHeight(), PILLAR);
-		g.fill(x0, 0, x1, g.guiHeight(), CURTAIN);
-		g.centeredText(font, Component.literal("Reels").withStyle(ChatFormatting.BOLD), (x0 + x1) / 2, g.guiHeight() / 2 - 4, WHITE);
-	}
-
-	/** Covers the teleport with a vertical swipe, like the previous reel sliding out of view. */
-	private static void transition(GuiGraphicsExtractor g, Font font, int x0, int x1, int h) {
-		float p = ReelsClient.transitionProgress();
-		if (p >= 1.0F) {
-			return;
-		}
-		float eased = 1.0F - (1.0F - p) * (1.0F - p);
-		int dir = ReelsClient.transitionDir();
-		// Scrolling down pushes the old reel up; scrolling up pulls it down.
-		int offset = Math.round(eased * h) * (dir > 0 ? -1 : 1);
-		int top = offset;
-		g.enableScissor(x0, 0, x1, h - NAV_H);
-		g.fill(x0, top, x1, top + h, CURTAIN);
-		g.centeredText(font, Component.literal("Reels").withStyle(ChatFormatting.BOLD), (x0 + x1) / 2, top + h / 2 - 4, WHITE);
-		g.disableScissor();
 	}
 }
